@@ -8,7 +8,8 @@ fi
 seq_len=336
 model_name=PatchTST
 
-root_path_name=./dataset/
+# root_path_name=./dataset/
+root_path_name=/data/datasets/public/ETDataset/ETT-small/
 data_path_name=ETTh1.csv
 model_id_name=ETTh1
 data_name=ETTh1
@@ -32,8 +33,8 @@ do
       --n_heads 4 \
       --d_model 16 \
       --d_ff 128 \
-      --dropout 0.3\
-      --fc_dropout 0.3\
+      --dropout 0.2\
+      --fc_dropout 0.2\
       --head_dropout 0\
       --patch_len 16\
       --stride 8\

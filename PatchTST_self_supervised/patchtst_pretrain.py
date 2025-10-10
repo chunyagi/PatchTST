@@ -1,5 +1,5 @@
 
-
+import random
 import numpy as np
 import pandas as pd
 import os
@@ -27,6 +27,7 @@ parser.add_argument('--batch_size', type=int, default=64, help='batch size')
 parser.add_argument('--num_workers', type=int, default=0, help='number of workers for DataLoader')
 parser.add_argument('--scaler', type=str, default='standard', help='scale the input data')
 parser.add_argument('--features', type=str, default='M', help='for multivariate model or univariate model')
+parser.add_argument('--percent', type=int, default=100, help='percentage of training data to use')
 # Patch
 parser.add_argument('--patch_len', type=int, default=12, help='patch length')
 parser.add_argument('--stride', type=int, default=12, help='stride between patch')
@@ -41,17 +42,37 @@ parser.add_argument('--dropout', type=float, default=0.2, help='Transformer drop
 parser.add_argument('--head_dropout', type=float, default=0.2, help='head dropout')
 # Pretrain mask
 parser.add_argument('--mask_ratio', type=float, default=0.4, help='masking ratio for the input')
+parser.add_argument('--use_gaussian_noise', type=int, default=0, help='enable gaussian noise addition')
+parser.add_argument('--noise_std', type=float, default=0.1, help='gaussian noise for the input')
 # Optimization args
 parser.add_argument('--n_epochs_pretrain', type=int, default=10, help='number of pre-training epochs')
 parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
 # model id to keep track of the number of models saved
 parser.add_argument('--pretrained_model_id', type=int, default=1, help='id of the saved pretrained model')
 parser.add_argument('--model_type', type=str, default='based_model', help='for multivariate model or univariate model')
+parser.add_argument('--seed', type=int, default=42, help='random seed for reproducibility')
 
 
 args = parser.parse_args()
 print('args:', args)
-args.save_pretrained_model = 'patchtst_pretrained_cw'+str(args.context_points)+'_patch'+str(args.patch_len) + '_stride'+str(args.stride) + '_epochs-pretrain' + str(args.n_epochs_pretrain) + '_mask' + str(args.mask_ratio)  + '_model' + str(args.pretrained_model_id)
+
+# Set random seeds for reproducibility
+random.seed(args.seed)
+np.random.seed(args.seed)
+torch.manual_seed(args.seed)
+
+args.save_pretrained_model = 'patchtst_pretrained_cw' + str(args.context_points) + '_patch'+str(args.patch_len) + '_stride'+str(args.stride) + '_epochs-pretrain' + str(args.n_epochs_pretrain) + '_mask' + str(args.mask_ratio)
+
+# Add Gaussian noise info
+if args.use_gaussian_noise:
+    args.save_pretrained_model += '_gnoise' + str(args.noise_std)
+else:
+    args.save_pretrained_model += '_zero'
+
+if args.percent < 100:
+    args.save_pretrained_model += '_pct' + str(args.percent)
+
+args.save_pretrained_model += '_model' + str(args.pretrained_model_id)
 args.save_path = 'saved_models/' + args.dset_pretrain + '/masked_patchtst/' + args.model_type + '/'
 if not os.path.exists(args.save_path): os.makedirs(args.save_path)
 
@@ -98,7 +119,7 @@ def find_lr():
     loss_func = torch.nn.MSELoss(reduction='mean')
     # get callbacks
     cbs = [RevInCB(dls.vars, denorm=False)] if args.revin else []
-    cbs += [PatchMaskCB(patch_len=args.patch_len, stride=args.stride, mask_ratio=args.mask_ratio)]
+    cbs += [PatchMaskCB(patch_len=args.patch_len, stride=args.stride, mask_ratio=args.mask_ratio, use_gaussian_noise=args.use_gaussian_noise, noise_std=args.noise_std)]
         
     # define learner
     learn = Learner(dls, model, 
@@ -122,7 +143,7 @@ def pretrain_func(lr=args.lr):
     # get callbacks
     cbs = [RevInCB(dls.vars, denorm=False)] if args.revin else []
     cbs += [
-         PatchMaskCB(patch_len=args.patch_len, stride=args.stride, mask_ratio=args.mask_ratio),
+         PatchMaskCB(patch_len=args.patch_len, stride=args.stride, mask_ratio=args.mask_ratio, use_gaussian_noise=args.use_gaussian_noise, noise_std=args.noise_std),
          SaveModelCB(monitor='valid_loss', fname=args.save_pretrained_model,                       
                         path=args.save_path)
         ]

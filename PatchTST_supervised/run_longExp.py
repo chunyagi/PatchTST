@@ -26,6 +26,7 @@ if __name__ == '__main__':
     parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
     parser.add_argument('--freq', type=str, default='h',
                         help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
+    parser.add_argument('--percent', type=int, default=100, help='percentage of training data to use')
     parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
 
     # forecasting task
@@ -69,7 +70,7 @@ if __name__ == '__main__':
     parser.add_argument('--embed', type=str, default='timeF',
                         help='time features encoding, options:[timeF, fixed, learned]')
     parser.add_argument('--activation', type=str, default='gelu', help='activation')
-    parser.add_argument('--output_attention', action='store_true', help='whether to output attention in ecoder')
+    parser.add_argument('--output_attention', action='store_true', help='whether to output attention in encoder')
     parser.add_argument('--do_predict', action='store_true', help='whether to predict unseen future data')
 
     # optimization
@@ -149,9 +150,10 @@ if __name__ == '__main__':
             torch.cuda.empty_cache()
     else:
         ii = 0
-        setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(args.model_id,
+        setting = '{}_{}_{}_pct{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(args.model_id,
                                                                                                     args.model,
                                                                                                     args.data,
+                                                                                                    args.percent,
                                                                                                     args.features,
                                                                                                     args.seq_len,
                                                                                                     args.label_len,

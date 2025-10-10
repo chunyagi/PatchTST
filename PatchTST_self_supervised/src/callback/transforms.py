@@ -23,6 +23,10 @@ class RevInCB(Callback):
         self.denorm = denorm
         self.revin = RevIN(num_features, eps, affine)
     
+    def before_fit(self):
+        """Move RevIN to the same device as the model"""
+        device = next(self.learner.model.parameters()).device
+        self.revin = self.revin.to(device)        
 
     def before_forward(self): self.revin_norm()
     def after_forward(self): 

@@ -29,7 +29,7 @@ class PatchCB(Callback):
 
 
 class PatchMaskCB(Callback):
-    def __init__(self, patch_len, stride, mask_ratio,
+    def __init__(self, patch_len, stride, mask_ratio, use_gaussian_noise, noise_std,
                         mask_when_pred:bool=False):
         """
         Callback used to perform the pretext task of reconstruct the original data after a binary mask has been applied.
@@ -40,7 +40,9 @@ class PatchMaskCB(Callback):
         """
         self.patch_len = patch_len
         self.stride = stride
-        self.mask_ratio = mask_ratio        
+        self.mask_ratio = mask_ratio
+        self.use_gaussian_noise = use_gaussian_noise
+        self.noise_std = noise_std
 
     def before_fit(self):
         # overwrite the predefined loss function
@@ -54,7 +56,7 @@ class PatchMaskCB(Callback):
         xb: [bs x seq_len x n_vars] -> [bs x num_patch x n_vars x patch_len]
         """
         xb_patch, num_patch = create_patch(self.xb, self.patch_len, self.stride)    # xb_patch: [bs x num_patch x n_vars x patch_len]
-        xb_mask, _, self.mask, _ = random_masking(xb_patch, self.mask_ratio)   # xb_mask: [bs x num_patch x n_vars x patch_len]
+        xb_mask, _, self.mask, _ = random_masking(xb_patch, self.mask_ratio, use_gaussian_noise=self.use_gaussian_noise, noise_std=self.noise_std)   # xb_mask: [bs x num_patch x n_vars x patch_len]
         self.mask = self.mask.bool()    # mask: [bs x num_patch x n_vars]
         self.learner.xb = xb_mask       # learner.xb: masked 4D tensor    
         self.learner.yb = xb_patch      # learner.yb: non-masked 4d tensor
@@ -103,35 +105,85 @@ class Patch(nn.Module):
         return x
 
 
-def random_masking(xb, mask_ratio):
+# def random_masking(xb, mask_ratio, use_gaussian_noise, noise_std):
+#     # xb: [bs x num_patch x n_vars x patch_len]
+#     bs, L, nvars, D = xb.shape
+#     x = xb.clone()
+    
+#     len_keep = int(L * (1 - mask_ratio))
+        
+#     noise = torch.rand(bs, L, nvars, device=xb.device)  # noise in [0, 1], bs x L x nvars
+        
+#     # sort noise for each sample
+#     ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
+#     ids_restore = torch.argsort(ids_shuffle, dim=1)  # ids_restore: [bs x L x nvars]
+
+#     # keep the first subset
+#     ids_keep = ids_shuffle[:, :len_keep, :]  # ids_keep: [bs x len_keep x nvars]         
+#     x_kept = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, 1, D))  # x_kept: [bs x len_keep x nvars x patch_len]
+   
+#     # removed x - MODIFIED PART
+#     if use_gaussian_noise:
+#         # print(f"[INFO] Adding gaussian noise with std {noise_std}")
+#         # Add Gaussian noise instead of zeros
+#         x_removed = torch.randn(bs, L-len_keep, nvars, D, device=xb.device) * noise_std
+#     else:
+#         # Original: set to zeros
+#         # print(f"[INFO] Using zero masking")
+#         x_removed = torch.zeros(bs, L-len_keep, nvars, D, device=xb.device)
+    
+#     x_ = torch.cat([x_kept, x_removed], dim=1)  # x_: [bs x L x nvars x patch_len]
+
+#     # combine the kept part and the removed one
+#     x_masked = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1,1,1,D))  # x_masked: [bs x num_patch x nvars x patch_len]
+
+#     # generate the binary mask: 0 is keep, 1 is remove
+#     mask = torch.ones([bs, L, nvars], device=x.device)  # mask: [bs x num_patch x nvars]
+#     mask[:, :len_keep, :] = 0
+#     # unshuffle to get the binary mask
+#     mask = torch.gather(mask, dim=1, index=ids_restore)  # [bs x num_patch x nvars]
+#     return x_masked, x_kept, mask, ids_restore
+
+
+def random_masking(xb, mask_ratio, use_gaussian_noise, noise_std):
     # xb: [bs x num_patch x n_vars x patch_len]
     bs, L, nvars, D = xb.shape
     x = xb.clone()
     
     len_keep = int(L * (1 - mask_ratio))
         
-    noise = torch.rand(bs, L, nvars,device=xb.device)  # noise in [0, 1], bs x L x nvars
+    noise = torch.rand(bs, L, nvars, device=xb.device)  # noise in [0, 1], bs x L x nvars
         
     # sort noise for each sample
-    ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
-    ids_restore = torch.argsort(ids_shuffle, dim=1)                                     # ids_restore: [bs x L x nvars]
+    ids_shuffle = torch.argsort(noise, dim=1)
+    ids_restore = torch.argsort(ids_shuffle, dim=1)
 
     # keep the first subset
-    ids_keep = ids_shuffle[:, :len_keep, :]                                              # ids_keep: [bs x len_keep x nvars]         
-    x_kept = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, 1, D))     # x_kept: [bs x len_keep x nvars  x patch_len]
+    ids_keep = ids_shuffle[:, :len_keep, :]
+    x_kept = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, 1, D))
    
-    # removed x
-    x_removed = torch.zeros(bs, L-len_keep, nvars, D, device=xb.device)                 # x_removed: [bs x (L-len_keep) x nvars x patch_len]
-    x_ = torch.cat([x_kept, x_removed], dim=1)                                          # x_: [bs x L x nvars x patch_len]
+    # Get the patches to be masked
+    ids_remove = ids_shuffle[:, len_keep:, :]
+    x_to_mask = torch.gather(x, dim=1, index=ids_remove.unsqueeze(-1).repeat(1, 1, 1, D))
+    
+    # OPTION 1: Add Gaussian noise to the original patch values
+    if use_gaussian_noise:
+        # print(f"[INFO] Adding gaussian noise with std {noise_std}")
+        gaussian_noise = torch.randn(bs, L-len_keep, nvars, D, device=xb.device) * noise_std
+        x_removed = x_to_mask + gaussian_noise  # Add noise to original values
+    else:
+        # Original: set to zeros
+        x_removed = torch.zeros(bs, L-len_keep, nvars, D, device=xb.device)
+    
+    x_ = torch.cat([x_kept, x_removed], dim=1)
 
-    # combine the kept part and the removed one
-    x_masked = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1,1,1,D)) # x_masked: [bs x num_patch x nvars x patch_len]
+    # combine the kept part and the masked one
+    x_masked = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1,1,1,D))
 
     # generate the binary mask: 0 is keep, 1 is remove
-    mask = torch.ones([bs, L, nvars], device=x.device)                                  # mask: [bs x num_patch x nvars]
+    mask = torch.ones([bs, L, nvars], device=x.device)
     mask[:, :len_keep, :] = 0
-    # unshuffle to get the binary mask
-    mask = torch.gather(mask, dim=1, index=ids_restore)                                  # [bs x num_patch x nvars]
+    mask = torch.gather(mask, dim=1, index=ids_restore)
     return x_masked, x_kept, mask, ids_restore
 
 
