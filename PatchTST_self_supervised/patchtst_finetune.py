@@ -1,5 +1,5 @@
 
-
+import random
 import numpy as np
 import pandas as pd
 import os
@@ -50,10 +50,16 @@ parser.add_argument('--pretrained_model', type=str, default=None, help='pretrain
 # model id to keep track of the number of models saved
 parser.add_argument('--finetuned_model_id', type=int, default=1, help='id of the saved finetuned model')
 parser.add_argument('--model_type', type=str, default='based_model', help='for multivariate model or univariate model')
-
+parser.add_argument('--seed', type=int, default=42, help='random seed for reproducibility')
 
 args = parser.parse_args()
 print('args:', args)
+
+# Set random seeds for reproducibility
+random.seed(args.seed)
+np.random.seed(args.seed)
+torch.manual_seed(args.seed)
+
 args.save_path = 'saved_models/' + args.dset_finetune + '/masked_patchtst/' + args.model_type + '/'
 if not os.path.exists(args.save_path): os.makedirs(args.save_path)
 
