@@ -180,7 +180,13 @@ class Learner(GetAttr):
 
     def model_forward(self):
         self('before_forward')
-        self.pred = self.model(self.xb)
+        
+        # Check if using mask token approach
+        if hasattr(self, 'mask') and hasattr(self.model, 'use_mask_token'):
+            self.pred = self.model(self.xb, mask=self.mask)
+        else:
+            self.pred = self.model(self.xb)
+        
         self('after_forward')
         return self.pred
 

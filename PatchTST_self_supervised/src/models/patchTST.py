@@ -29,7 +29,7 @@ class PatchTST(nn.Module):
                  norm:str='BatchNorm', attn_dropout:float=0., dropout:float=0., act:str="gelu", 
                  res_attention:bool=True, pre_norm:bool=False, store_attn:bool=False,
                  pe:str='zeros', learn_pe:bool=True, head_dropout = 0, 
-                 head_type = "prediction", individual = False, 
+                 head_type = "prediction", individual = False, use_mask_token=False, 
                  y_range:Optional[tuple]=None, verbose:bool=False, **kwargs):
 
         super().__init__()
@@ -41,7 +41,7 @@ class PatchTST(nn.Module):
                                 shared_embedding=shared_embedding, d_ff=d_ff,
                                 attn_dropout=attn_dropout, dropout=dropout, act=act, 
                                 res_attention=res_attention, pre_norm=pre_norm, store_attn=store_attn,
-                                pe=pe, learn_pe=learn_pe, verbose=verbose, **kwargs)
+                                pe=pe, learn_pe=learn_pe, use_mask_token=use_mask_token, verbose=verbose, **kwargs)
 
         # Head
         self.n_vars = c_in
@@ -57,16 +57,13 @@ class PatchTST(nn.Module):
             self.head = ClassificationHead(self.n_vars, d_model, target_dim, head_dropout)
 
 
-    def forward(self, z):                             
+    def forward(self, z, mask=None):
         """
         z: tensor [bs x num_patch x n_vars x patch_len]
+        mask: tensor [bs x num_patch x n_vars] (optional, 1 = masked, 0 = keep)
         """   
-        z = self.backbone(z)                                                                # z: [bs x nvars x d_model x num_patch]
-        z = self.head(z)                                                                    
-        # z: [bs x target_dim x nvars] for prediction
-        #    [bs x target_dim] for regression
-        #    [bs x target_dim] for classification
-        #    [bs x num_patch x n_vars x patch_len] for pretrain
+        z = self.backbone(z, mask=mask)
+        z = self.head(z)
         return z
 
 
@@ -176,14 +173,15 @@ class PatchTSTEncoder(nn.Module):
                  n_layers=3, d_model=128, n_heads=16, shared_embedding=True,
                  d_ff=256, norm='BatchNorm', attn_dropout=0., dropout=0., act="gelu", store_attn=False,
                  res_attention=True, pre_norm=False,
-                 pe='zeros', learn_pe=True, verbose=False, **kwargs):
+                 pe='zeros', learn_pe=True, use_mask_token=False, verbose=False, **kwargs):
 
         super().__init__()
         self.n_vars = c_in
         self.num_patch = num_patch
         self.patch_len = patch_len
         self.d_model = d_model
-        self.shared_embedding = shared_embedding        
+        self.shared_embedding = shared_embedding
+        self.use_mask_token = use_mask_token        
 
         # Input encoding: projection of feature vectors onto a d-dim vector space
         if not shared_embedding: 
@@ -191,6 +189,10 @@ class PatchTSTEncoder(nn.Module):
             for _ in range(self.n_vars): self.W_P.append(nn.Linear(patch_len, d_model))
         else:
             self.W_P = nn.Linear(patch_len, d_model)      
+
+        # Learnable mask token (shared across all variables)
+        if self.use_mask_token:
+            self.mask_token = nn.Parameter(torch.randn(1, 1, 1, d_model))
 
         # Positional encoding
         self.W_pos = positional_encoding(pe, learn_pe, num_patch, d_model)
@@ -203,7 +205,7 @@ class PatchTSTEncoder(nn.Module):
                                    pre_norm=pre_norm, activation=act, res_attention=res_attention, n_layers=n_layers, 
                                     store_attn=store_attn)
 
-    def forward(self, x) -> Tensor:          
+    def forward(self, x, mask=None) -> Tensor:          
         """
         x: tensor [bs x num_patch x nvars x patch_len]
         """
@@ -217,6 +219,13 @@ class PatchTSTEncoder(nn.Module):
             x = torch.stack(x_out, dim=2)
         else:
             x = self.W_P(x)                                                      # x: [bs x num_patch x nvars x d_model]
+
+        # Apply mask token if masking is enabled
+        if self.use_mask_token and mask is not None:
+            mask_expanded = mask.unsqueeze(-1)                                   # [bs x num_patch x nvars x 1]
+            mask_token_expanded = self.mask_token.expand(bs, num_patch, n_vars, self.d_model)
+            x = x * (1 - mask_expanded) + mask_token_expanded * mask_expanded   # x: [bs x num_patch x nvars x d_model]
+
         x = x.transpose(1,2)                                                     # x: [bs x nvars x num_patch x d_model]        
 
         u = torch.reshape(x, (bs*n_vars, num_patch, self.d_model) )              # u: [bs * nvars x num_patch x d_model]

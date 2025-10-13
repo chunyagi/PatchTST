@@ -43,6 +43,7 @@ parser.add_argument('--head_dropout', type=float, default=0.2, help='head dropou
 parser.add_argument('--mask_ratio', type=float, default=0.4, help='masking ratio for the input')
 parser.add_argument('--use_gaussian_noise', type=int, default=0, help='enable gaussian noise addition')
 parser.add_argument('--noise_std', type=float, default=0.1, help='gaussian noise for the input')
+parser.add_argument('--use_mask_token', type=int, default=0, help='use learnable mask token: 0 for input-level masking, 1 for embedding-level masking')
 # Optimization args
 parser.add_argument('--n_epochs_pretrain', type=int, default=10, help='number of pre-training epochs')
 parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
@@ -62,8 +63,10 @@ torch.manual_seed(args.seed)
 
 args.save_pretrained_model = 'patchtst_pretrained_cw' + str(args.context_points) + '_patch'+str(args.patch_len) + '_stride'+str(args.stride) + '_epochs-pretrain' + str(args.n_epochs_pretrain) + '_mask' + str(args.mask_ratio)
 
-# Add Gaussian noise info
-if args.use_gaussian_noise:
+# Add masking strategy info
+if args.use_mask_token:
+    args.save_pretrained_model += '_masktok'
+elif args.use_gaussian_noise:
     args.save_pretrained_model += '_gnoise' + str(args.noise_std)
 else:
     args.save_pretrained_model += '_zero'
@@ -100,7 +103,8 @@ def get_model(c_in, args):
                 head_dropout=args.head_dropout,
                 act='relu',
                 head_type='pretrain',
-                res_attention=False
+                res_attention=False,
+                use_mask_token=args.use_mask_token  # Add this line
                 )        
     # print out the model size
     print('number of model params', sum(p.numel() for p in model.parameters() if p.requires_grad))
@@ -115,7 +119,11 @@ def find_lr():
     loss_func = torch.nn.MSELoss(reduction='mean')
     # get callbacks
     cbs = [RevInCB(dls.vars, denorm=False)] if args.revin else []
-    cbs += [PatchMaskCB(patch_len=args.patch_len, stride=args.stride, mask_ratio=args.mask_ratio, use_gaussian_noise=args.use_gaussian_noise, noise_std=args.noise_std)]
+    cbs += [PatchMaskCB(patch_len=args.patch_len, stride=args.stride, 
+                        mask_ratio=args.mask_ratio, 
+                        use_gaussian_noise=args.use_gaussian_noise, 
+                        noise_std=args.noise_std,
+                        use_mask_token=args.use_mask_token)]
         
     # define learner
     learn = Learner(dls, model, 
