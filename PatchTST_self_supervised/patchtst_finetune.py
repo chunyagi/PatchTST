@@ -30,11 +30,13 @@ parser.add_argument('--batch_size', type=int, default=64, help='batch size')
 parser.add_argument('--num_workers', type=int, default=0, help='number of workers for DataLoader')
 parser.add_argument('--scaler', type=str, default='standard', help='scale the input data')
 parser.add_argument('--features', type=str, default='M', help='for multivariate model or univariate model')
+parser.add_argument('--percent', type=int, default=100, help='percentage of training data to use')
 # Patch
 parser.add_argument('--patch_len', type=int, default=12, help='patch length')
 parser.add_argument('--stride', type=int, default=12, help='stride between patch')
 # RevIN
 parser.add_argument('--revin', type=int, default=1, help='reversible instance normalization')
+parser.add_argument('--affine', type=int, default=0, help='RevIN-affine; True 1 False 0')
 # Model args
 parser.add_argument('--n_layers', type=int, default=3, help='number of Transformer layers')
 parser.add_argument('--n_heads', type=int, default=16, help='number of Transformer heads')
@@ -111,10 +113,11 @@ def find_lr(head_type):
     # transfer weight
     # weight_path = args.save_path + args.pretrained_model + '.pth'
     model = transfer_weights(args.pretrained_model, model)
+
     # get loss
     loss_func = torch.nn.MSELoss(reduction='mean')
     # get callbacks
-    cbs = [RevInCB(dls.vars)] if args.revin else []
+    cbs = [RevInCB(dls.vars, affine=args.affine)] if args.revin else []
     cbs += [PatchCB(patch_len=args.patch_len, stride=args.stride)]
         
     # define learner
@@ -148,7 +151,7 @@ def finetune_func(lr=args.lr):
     # get loss
     loss_func = torch.nn.MSELoss(reduction='mean')   
     # get callbacks
-    cbs = [RevInCB(dls.vars, denorm=True)] if args.revin else []
+    cbs = [RevInCB(dls.vars, affine=args.affine, denorm=True)] if args.revin else []
     cbs += [
          PatchCB(patch_len=args.patch_len, stride=args.stride),
          SaveModelCB(monitor='valid_loss', fname=args.save_finetuned_model, path=args.save_path)
@@ -178,7 +181,7 @@ def linear_probe_func(lr=args.lr):
     # get loss
     loss_func = torch.nn.MSELoss(reduction='mean')    
     # get callbacks
-    cbs = [RevInCB(dls.vars, denorm=True)] if args.revin else []
+    cbs = [RevInCB(dls.vars, affine=args.affine, denorm=True)] if args.revin else []
     cbs += [
          PatchCB(patch_len=args.patch_len, stride=args.stride),
          SaveModelCB(monitor='valid_loss', fname=args.save_finetuned_model, path=args.save_path)
@@ -200,7 +203,7 @@ def test_func(weight_path):
     dls = get_dls(args)
     model = get_model(dls.vars, args, head_type='prediction').to('cuda')
     # get callbacks
-    cbs = [RevInCB(dls.vars, denorm=True)] if args.revin else []
+    cbs = [RevInCB(dls.vars, affine=args.affine, denorm=True)] if args.revin else []
     cbs += [PatchCB(patch_len=args.patch_len, stride=args.stride)]
     learn = Learner(dls, model,cbs=cbs)
     out  = learn.test(dls.test, weight_path=weight_path+'.pth', scores=[mse,mae])         # out: a list of [pred, targ, score]

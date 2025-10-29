@@ -16,7 +16,7 @@ class Dataset_ETT_hour(Dataset):
     def __init__(self, root_path, split='train', size=None,
                  features='S', data_path='ETTh1.csv',
                  target='OT', scale=True, timeenc=0, freq='h',
-                 use_time_features=False
+                 use_time_features=False, percent=100
                  ):
         # size [seq_len, label_len, pred_len]
         # info
@@ -39,6 +39,7 @@ class Dataset_ETT_hour(Dataset):
         self.timeenc = timeenc
         self.freq = freq
         self.use_time_features = use_time_features
+        self.percent = percent
 
         self.root_path = root_path
         self.data_path = data_path
@@ -53,6 +54,10 @@ class Dataset_ETT_hour(Dataset):
         border2s = [12 * 30 * 24, 12 * 30 * 24 + 4 * 30 * 24, 12 * 30 * 24 + 8 * 30 * 24]
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
+
+        # Apply percentage to training data only
+        if self.set_type == 0:
+            border2 = (border2 - self.seq_len) * self.percent // 100 + self.seq_len
 
         if self.features == 'M' or self.features == 'MS':
             cols_data = df_raw.columns[1:]
