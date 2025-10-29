@@ -72,6 +72,9 @@ elif args.use_gaussian_noise:
 else:
     args.save_pretrained_model += '_zero'
 
+if args.percent < 100:
+    args.save_pretrained_model += '_pct' + str(args.percent)
+
 args.save_pretrained_model += '_model' + str(args.pretrained_model_id)
 args.save_path = 'saved_models/' + args.dset_pretrain + '/masked_patchtst/' + args.model_type + '/'
 if not os.path.exists(args.save_path): os.makedirs(args.save_path)
