@@ -187,10 +187,7 @@ class TSTiEncoder(nn.Module):  #i means channel-independent
         z = torch.reshape(z, (-1,n_vars,z.shape[-2],z.shape[-1]))                # z: [bs x nvars x patch_num x d_model]
         z = z.permute(0,1,3,2)                                                   # z: [bs x nvars x d_model x patch_num]
         
-        if self.store_attn:
-            return z, attn
-        else:
-            return z    
+        return z    
             
             
     
@@ -207,7 +204,6 @@ class TSTEncoder(nn.Module):
                                                       pre_norm=pre_norm, store_attn=store_attn) for i in range(n_layers)])
         self.res_attention = res_attention
 
-        
     def forward(self, src:Tensor, key_padding_mask:Optional[Tensor]=None, attn_mask:Optional[Tensor]=None):
         output = src
         scores = None
