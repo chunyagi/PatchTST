@@ -46,6 +46,7 @@ parser.add_argument('--use_gaussian_noise', type=int, default=0, help='enable ga
 parser.add_argument('--noise_std', type=float, default=0.1, help='gaussian noise for the input')
 # Optimization args
 parser.add_argument('--n_epochs_pretrain', type=int, default=10, help='number of pre-training epochs')
+parser.add_argument('--patient', type=int, default=10, help='patience for early stopping')
 parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
 # model id to keep track of the number of models saved
 parser.add_argument('--pretrained_model_id', type=int, default=1, help='id of the saved pretrained model')
@@ -145,7 +146,8 @@ def pretrain_func(lr=args.lr):
     cbs += [
          PatchMaskCB(patch_len=args.patch_len, stride=args.stride, mask_ratio=args.mask_ratio, use_gaussian_noise=args.use_gaussian_noise, noise_std=args.noise_std),
          SaveModelCB(monitor='valid_loss', fname=args.save_pretrained_model,                       
-                        path=args.save_path)
+                        path=args.save_path),
+         EarlyStoppingCB(monitor='valid_loss', patient=args.patient)
         ]
     # define learner
     learn = Learner(dls, model, 
