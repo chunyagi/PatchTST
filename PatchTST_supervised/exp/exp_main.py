@@ -285,6 +285,16 @@ class Exp_Main(Exp_Basic):
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
+        # ---------- Case Study: Attention Visualization ----------
+        var_idx_mapping = {
+            0: 11, 1: 25, 2: 81, 3: 4, 4: 24, 5: 27, 
+            6: 152, 7: 154, 8: 237, 9: 238, 10: 206, 
+            11: 202, 12: 37, 13: 8, 14: 113, 15: 114
+        }
+
+        n_vars = 16
+        # ---------------------------------------------------------
+        
         self.model.eval()
         with torch.no_grad():
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
@@ -319,9 +329,25 @@ class Exp_Main(Exp_Basic):
                     if 'Linear' in self.args.model or 'TST' in self.args.model:
                         if self.args.output_attention:
                             outputs, attentions = self.model(batch_x)
-                            # Save attention from first batch only
+                            
+                            # ---------- Case Study: Attention Visualization ----------
                             if i == 0:
-                                np.save(folder_path + 'test_attentions.npy', attentions.detach().cpu().numpy())
+                                for var_idx in range(n_vars):
+                                    series_num = var_idx_mapping[var_idx]
+                                    
+                                    # First sample of variable var_idx is at position: 0 + var_idx × batch_size
+                                    sample_position = var_idx * self.args.batch_size
+                                    print(self.args.batch_size)
+                                    
+                                    np.save(folder_path + f'attention_series{series_num}.npy', 
+                                          attentions[:, sample_position:sample_position+1].detach().cpu().numpy())
+                                    np.save(folder_path + f'context_series{series_num}.npy',
+                                          batch_x[0:1, :, var_idx:var_idx+1].detach().cpu().numpy())
+                                    np.save(folder_path + f'target_series{series_num}.npy',
+                                          batch_y[0:1, :, var_idx:var_idx+1].detach().cpu().numpy())
+                                    np.save(folder_path + f'prediction_series{series_num}.npy',
+                                          outputs[0:1, :, var_idx:var_idx+1].detach().cpu().numpy())                            
+                            # ---------------------------------------------------------
                         else:
                             outputs = self.model(batch_x)                  
                     # if 'Linear' in self.args.model or 'TST' in self.args.model:
