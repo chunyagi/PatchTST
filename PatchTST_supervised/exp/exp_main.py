@@ -273,6 +273,7 @@ class Exp_Main(Exp_Basic):
 
     def test(self, setting, test=0):
         test_data, test_loader = self._get_data(flag='test')
+        # print(f'len of test_data: {len(test_data)}')
         
         if test:
             print('loading model')
@@ -329,25 +330,21 @@ class Exp_Main(Exp_Basic):
                     if 'Linear' in self.args.model or 'TST' in self.args.model:
                         if self.args.output_attention:
                             outputs, attentions = self.model(batch_x)
+                            # print(attentions.shape)
+                            # print(batch_x.shape)
                             
-                            # ---------- Case Study: Attention Visualization ----------
+                            #---- Case Study: Attention Visualization
                             if i == 0:
-                                for var_idx in range(n_vars):
-                                    series_num = var_idx_mapping[var_idx]
-                                    
-                                    # First sample of variable var_idx is at position: 0 + var_idx × batch_size
-                                    sample_position = var_idx * self.args.batch_size
-                                    print(self.args.batch_size)
-                                    
+                                for series_num in var_idx_mapping.values():
                                     np.save(folder_path + f'attention_series{series_num}.npy', 
-                                          attentions[:, sample_position:sample_position+1].detach().cpu().numpy())
+                                          attentions[:, series_num:series_num+1].detach().cpu().numpy())
                                     np.save(folder_path + f'context_series{series_num}.npy',
-                                          batch_x[0:1, :, var_idx:var_idx+1].detach().cpu().numpy())
+                                          batch_x[0:1, :, series_num:series_num+1].detach().cpu().numpy())
                                     np.save(folder_path + f'target_series{series_num}.npy',
-                                          batch_y[0:1, :, var_idx:var_idx+1].detach().cpu().numpy())
+                                          batch_y[0:1, :, series_num:series_num+1].detach().cpu().numpy())
                                     np.save(folder_path + f'prediction_series{series_num}.npy',
-                                          outputs[0:1, :, var_idx:var_idx+1].detach().cpu().numpy())                            
-                            # ---------------------------------------------------------
+                                          outputs[0:1, :, series_num:series_num+1].detach().cpu().numpy())
+                            #----
                         else:
                             outputs = self.model(batch_x)                  
                     # if 'Linear' in self.args.model or 'TST' in self.args.model:
