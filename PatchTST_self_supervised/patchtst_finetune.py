@@ -44,6 +44,7 @@ parser.add_argument('--d_model', type=int, default=128, help='Transformer d_mode
 parser.add_argument('--d_ff', type=int, default=256, help='Tranformer MLP dimension')
 parser.add_argument('--dropout', type=float, default=0.2, help='Transformer dropout')
 parser.add_argument('--head_dropout', type=float, default=0.2, help='head dropout')
+parser.add_argument('--output_attention', action='store_true', help='whether to output attention in test')
 # Optimization args
 parser.add_argument('--n_epochs_finetune', type=int, default=20, help='number of finetuning epochs')
 parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
@@ -101,7 +102,8 @@ def get_model(c_in, args, head_type, weight_path=None):
                 head_dropout=args.head_dropout,
                 act='relu',
                 head_type=head_type,
-                res_attention=False
+                res_attention=False,
+                store_attn=args.output_attention if hasattr(args, 'output_attention') else False
                 )    
     if weight_path: model = transfer_weights(weight_path, model)
     # print out the model size
@@ -209,7 +211,7 @@ def test_func(weight_path):
     # get callbacks
     cbs = [RevInCB(dls.vars, affine=args.affine, denorm=True)] if args.revin else []
     cbs += [PatchCB(patch_len=args.patch_len, stride=args.stride)]
-    learn = Learner(dls, model,cbs=cbs)
+    learn = Learner(dls, model, cbs=cbs, args=args)
     out  = learn.test(dls.test, weight_path=weight_path+'.pth', scores=[mse,mae])         # out: a list of [pred, targ, score]
     print('score:', out[2])
     # save results
@@ -246,5 +248,3 @@ if __name__ == '__main__':
         # Test
         out = test_func(weight_path)        
         print('----------- Complete! -----------')
-
-

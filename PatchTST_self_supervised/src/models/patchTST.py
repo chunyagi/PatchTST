@@ -61,13 +61,15 @@ class PatchTST(nn.Module):
         """
         z: tensor [bs x num_patch x n_vars x patch_len]
         """   
-        z = self.backbone(z)                                                                # z: [bs x nvars x d_model x num_patch]
-        z = self.head(z)                                                                    
-        # z: [bs x target_dim x nvars] for prediction
-        #    [bs x target_dim] for regression
-        #    [bs x target_dim] for classification
-        #    [bs x num_patch x n_vars x patch_len] for pretrain
-        return z
+        output = self.backbone(z)
+        
+        if isinstance(output, tuple):
+            z, attn = output                                                                # z: [bs x nvars x d_model x num_patch], attn: attention maps
+            z = self.head(z)
+            return z, attn
+        else:
+            z = self.head(output)
+            return z
 
 
 class RegressionHead(nn.Module):
@@ -223,11 +225,18 @@ class PatchTSTEncoder(nn.Module):
         u = self.dropout(u + self.W_pos)                                         # u: [bs * nvars x num_patch x d_model]
 
         # Encoder
-        z = self.encoder(u)                                                      # z: [bs * nvars x num_patch x d_model]
-        z = torch.reshape(z, (-1,n_vars, num_patch, self.d_model))               # z: [bs x nvars x num_patch x d_model]
-        z = z.permute(0,1,3,2)                                                   # z: [bs x nvars x d_model x num_patch]
+        output = self.encoder(u)
 
-        return z
+        if isinstance(output, tuple):
+            z, attn = output                                                     # z: [bs * nvars x num_patch x d_model], attn: [n_layers, bs*nvars, n_heads, num_patch, num_patch]
+            z = torch.reshape(z, (-1, n_vars, num_patch, self.d_model))
+            z = z.permute(0,1,3,2)
+            return z, attn
+        else:
+            z = output
+            z = torch.reshape(z, (-1, n_vars, num_patch, self.d_model))
+            z = z.permute(0,1,3,2)
+            return z
     
     
 # Cell
@@ -253,8 +262,18 @@ class TSTEncoder(nn.Module):
             for mod in self.layers: output, scores = mod(output, prev=scores)
             return output
         else:
-            for mod in self.layers: output = mod(output)
-            return output
+            attentions = []  # Collect attention from all layers
+            for mod in self.layers:
+                if mod.store_attn:
+                    output, attn = mod(output)
+                    attentions.append(attn)
+                else:
+                    output = mod(output)
+            
+            if attentions:
+                return output, torch.stack(attentions)  # Stack all layer attentions
+            else:
+                return output
 
 
 
@@ -327,7 +346,7 @@ class TSTEncoderLayer(nn.Module):
         if self.res_attention:
             return src, scores
         else:
-            return src
-
-
-
+            if self.store_attn:
+                return src, attn
+            else:
+                return src

@@ -28,6 +28,7 @@ class Learner(GetAttr):
                         cbs=None, 
                         metrics=None, 
                         opt_func=Adam,
+                        args=None,
                         **kwargs):
                 
         self.model, self.dls, self.loss_func, self.lr = model, dls, loss_func, lr
@@ -43,6 +44,7 @@ class Learner(GetAttr):
         self.initialize_callbacks(cbs)        
         # Indicator of running lr_finder
         self.run_finder = False
+        self.args = args
 
     def set_opt(self):
         if self.model:
@@ -180,10 +182,18 @@ class Learner(GetAttr):
 
     def model_forward(self):
         self('before_forward')
-        self.pred = self.model(self.xb)
+        output = self.model(self.xb)
+        
+        # Handle attention output
+        if isinstance(output, tuple):
+            self.pred, self.attn = output
+        else:
+            self.pred = output
+            self.attn = None
+        
         self('after_forward')
         return self.pred
-
+    
     def _do_batch_validate(self):       
         # forward + calculate loss
         self.pred, self.loss = self.valid_step(self.batch)     
@@ -256,19 +266,44 @@ class Learner(GetAttr):
         if dl is None: return
         else: self.dl = dl
         if weight_path is not None: self.load(weight_path)
-        cb = GetTestCB()
+
+        # Create GetTestCB with case study parameters if needed
+        if hasattr(self, 'args') and hasattr(self.args, 'output_attention') and self.args.output_attention:
+            print("DEBUG: Creating GetTestCB with case study enabled")
+            var_idx_mapping = {
+                0: 11, 1: 25, 2: 81, 3: 4, 4: 24, 5: 27, 
+                6: 152, 7: 154, 8: 237, 9: 238, 10: 206, 
+                11: 202, 12: 37, 13: 8, 14: 113, 15: 114
+            }
+            cb = GetTestCB(
+                save_case_study=True,
+                var_idx_mapping=var_idx_mapping,
+                batch_size=self.args.batch_size,
+                save_path=self.args.save_path
+            )
+        else:
+            print("DEBUG: Creating GetTestCB WITHOUT case study")
+            cb = GetTestCB()
+
         self.add_callback(cb)
         self('before_test')
         self.model.eval()
         with torch.no_grad(): self.all_batches('test')
         self('after_test')   
         self.preds, self.targets = to_numpy([cb.preds, cb.targets])
+
+        # Get attentions if available
+        if hasattr(cb, 'attentions') and cb.attentions:
+            self.attentions = cb.attentions.detach().cpu().numpy()
+        else:
+            self.attentions = None
+
         # calculate scores
         if scores: 
             s_vals = [score(cb.targets, cb.preds).to('cpu').numpy() for score in list(scores)]
-            return self.preds, self.targets, s_vals
-        else: return self.preds, self.targets
-
+            return self.preds, self.targets, s_vals, self.attentions
+        else: 
+            return self.preds, self.targets, self.attentions
 
     def _prepare_data(self, test_data, Dataset=None, Dataloader=None, batch_size=None):
         if test_data is None: return test_data

@@ -70,21 +70,72 @@ class GetPredictionsCB(Callback):
         self.preds = torch.concat(self.preds)#.detach().cpu().numpy()
 
          
-
 class GetTestCB(Callback):
-    def __init__(self):
+    def __init__(self, save_case_study=False, var_idx_mapping=None, batch_size=None, save_path=None):
         super().__init__()
+        self.save_case_study = save_case_study
+        self.var_idx_mapping = var_idx_mapping
+        self.batch_size = batch_size
+        self.save_path = save_path
+        self.first_batch_saved = False
 
     def before_test(self):
-        self.preds, self.targets = [], []        
+        self.preds, self.targets = [], []
+        self.attentions = []
     
-    def after_batch_test(self):        
+    def after_batch_test(self):
+        print(f"DEBUG: after_batch_test called")
+        print(f"DEBUG: save_case_study = {self.save_case_study}")
+        print(f"DEBUG: first_batch_saved = {self.first_batch_saved}")
+        print(f"DEBUG: has attn = {hasattr(self.learn, 'attn')}")        
         # append the prediction after each forward batch           
         self.preds.append(self.pred)
         self.targets.append(self.yb)
+        
+        # Collect attention if available
+        if hasattr(self.learn, 'attn') and self.learn.attn is not None:
+            self.attentions.append(self.learn.attn)
+            
+            # Save first batch for case study
+            if self.save_case_study and not self.first_batch_saved and self.var_idx_mapping:
+                import os
+                import numpy as np
+                
+                folder_path = self.save_path + 'test_results/'
+                if not os.path.exists(folder_path):
+                    os.makedirs(folder_path)
+                
+                batch_x = self.learn.xb  # Context
+                batch_y = self.learn.yb  # Target
+                pred = self.pred         # Predictions
+                attn = self.learn.attn   # Attention
+                
+                for series_num in self.var_idx_mapping.values():
+                    sample_position = series_num * self.batch_size
+                    
+                    # Save attention
+                    np.save(folder_path + f'attention_series{series_num}.npy',
+                           attn[:, sample_position:sample_position+1].detach().cpu().numpy())
+                    
+                    # Save context (need to extract from patches)
+                    # Note: batch_x might be in patch format [bs, num_patch, nvars, patch_len]
+                    # We need the original context - this depends on your data format
+                    
+                    # Save target
+                    np.save(folder_path + f'target_series{series_num}.npy',
+                           batch_y[0:1, :, series_num:series_num+1].detach().cpu().numpy())
+                    
+                    # Save prediction
+                    np.save(folder_path + f'prediction_series{series_num}.npy',
+                           pred[0:1, :, series_num:series_num+1].detach().cpu().numpy())
+                
+                self.first_batch_saved = True
+                print(f"Saved case study data to {folder_path}")
 
     def after_test(self):           
-        self.preds = torch.concat(self.preds)#.detach().cpu().numpy()
-        self.targets = torch.concat(self.targets)#.detach().cpu().numpy()
-
-
+        self.preds = torch.concat(self.preds)
+        self.targets = torch.concat(self.targets)
+        
+        # Stack attentions if collected
+        if self.attentions:
+            self.attentions = torch.cat(self.attentions, dim=1)
