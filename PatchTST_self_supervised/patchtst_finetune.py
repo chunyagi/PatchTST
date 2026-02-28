@@ -103,7 +103,7 @@ def get_model(c_in, args, head_type, weight_path=None):
                 act='relu',
                 head_type=head_type,
                 res_attention=False,
-                store_attn=args.output_attention if hasattr(args, 'output_attention') else False
+                store_attn=args.output_attention
                 )    
     if weight_path: model = transfer_weights(weight_path, model)
     # print out the model size
@@ -209,10 +209,10 @@ def test_func(weight_path):
     dls = get_dls(args)
     model = get_model(dls.vars, args, head_type='prediction').to('cuda')
     # get callbacks
-    cbs = [RevInCB(dls.vars, affine=args.affine, denorm=True)] if args.revin else []
+    cbs = [RevInCB(dls.vars, denorm=True)] if args.revin else []
     cbs += [PatchCB(patch_len=args.patch_len, stride=args.stride)]
-    learn = Learner(dls, model, cbs=cbs, args=args)
-    out  = learn.test(dls.test, weight_path=weight_path+'.pth', scores=[mse,mae])         # out: a list of [pred, targ, score]
+    learn = Learner(dls, model, cbs=cbs)
+    out  = learn.test(dls.test, suffix_name, weight_path=weight_path+'.pth', scores=[mse,mae], store_attn=args.output_attention)         # out: a list of [pred, targ, score]
     print('score:', out[2])
     # save results
     pd.DataFrame(np.array(out[2]).reshape(1,-1), columns=['mse','mae']).to_csv(args.save_path + args.save_finetuned_model + '_acc.csv', float_format='%.6f', index=False)

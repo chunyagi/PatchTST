@@ -71,71 +71,51 @@ class GetPredictionsCB(Callback):
 
          
 class GetTestCB(Callback):
-    def __init__(self, save_case_study=False, var_idx_mapping=None, batch_size=None, save_path=None):
+    def __init__(self, setting, store_attn=False):
         super().__init__()
-        self.save_case_study = save_case_study
-        self.var_idx_mapping = var_idx_mapping
-        self.batch_size = batch_size
-        self.save_path = save_path
+        self.setting = setting
+        self.store_attn = store_attn
         self.first_batch_saved = False
 
     def before_test(self):
         self.preds, self.targets = [], []
-        self.attentions = []
     
-    def after_batch_test(self):
-        print(f"DEBUG: after_batch_test called")
-        print(f"DEBUG: save_case_study = {self.save_case_study}")
-        print(f"DEBUG: first_batch_saved = {self.first_batch_saved}")
-        print(f"DEBUG: has attn = {hasattr(self.learn, 'attn')}")        
-        # append the prediction after each forward batch           
+    def after_batch_test(self):        
         self.preds.append(self.pred)
         self.targets.append(self.yb)
         
-        # Collect attention if available
-        if hasattr(self.learn, 'attn') and self.learn.attn is not None:
-            self.attentions.append(self.learn.attn)
+        if self.store_attn and not self.first_batch_saved and hasattr(self.learner, 'attn'):
+            import os
+            import numpy as np
             
-            # Save first batch for case study
-            if self.save_case_study and not self.first_batch_saved and self.var_idx_mapping:
-                import os
-                import numpy as np
-                
-                folder_path = self.save_path + 'test_results/'
-                if not os.path.exists(folder_path):
-                    os.makedirs(folder_path)
-                
-                batch_x = self.learn.xb  # Context
-                batch_y = self.learn.yb  # Target
-                pred = self.pred         # Predictions
-                attn = self.learn.attn   # Attention
-                
-                for series_num in self.var_idx_mapping.values():
-                    sample_position = series_num * self.batch_size
-                    
-                    # Save attention
-                    np.save(folder_path + f'attention_series{series_num}.npy',
-                           attn[:, sample_position:sample_position+1].detach().cpu().numpy())
-                    
-                    # Save context (need to extract from patches)
-                    # Note: batch_x might be in patch format [bs, num_patch, nvars, patch_len]
-                    # We need the original context - this depends on your data format
-                    
-                    # Save target
-                    np.save(folder_path + f'target_series{series_num}.npy',
-                           batch_y[0:1, :, series_num:series_num+1].detach().cpu().numpy())
-                    
-                    # Save prediction
-                    np.save(folder_path + f'prediction_series{series_num}.npy',
-                           pred[0:1, :, series_num:series_num+1].detach().cpu().numpy())
-                
-                self.first_batch_saved = True
-                print(f"Saved case study data to {folder_path}")
-
+            var_idx_mapping = {
+                0: 11, 1: 25, 2: 81, 3: 4, 4: 24, 5: 27, 
+                6: 152, 7: 154, 8: 237, 9: 238, 10: 206, 
+                11: 202, 12: 37, 13: 8, 14: 113, 15: 114
+            }
+            
+            folder_path = './test_results/' + self.setting + '/'
+            if not os.path.exists(folder_path):
+                os.makedirs(folder_path)
+            
+            attn = self.learner.attn
+            batch_x = self.learner.xb
+            batch_y = self.learner.yb
+            pred = self.pred
+            
+            for series_num in var_idx_mapping.values():
+                np.save(folder_path + f'attention_series{series_num}.npy',
+                      attn[:, series_num:series_num+1].detach().cpu().numpy())
+                np.save(folder_path + f'context_series{series_num}.npy',
+                      batch_x[0:1, :, series_num:series_num+1].detach().cpu().numpy())
+                np.save(folder_path + f'target_series{series_num}.npy',
+                      batch_y[0:1, :, series_num:series_num+1].detach().cpu().numpy())
+                np.save(folder_path + f'prediction_series{series_num}.npy',
+                      pred[0:1, :, series_num:series_num+1].detach().cpu().numpy())
+            
+            self.first_batch_saved = True
+            print(f"Saved case study data to {folder_path}")
+    
     def after_test(self):           
         self.preds = torch.concat(self.preds)
         self.targets = torch.concat(self.targets)
-        
-        # Stack attentions if collected
-        if self.attentions:
-            self.attentions = torch.cat(self.attentions, dim=1)
