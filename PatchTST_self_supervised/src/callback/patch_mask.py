@@ -7,7 +7,7 @@ from .core import Callback
 # Cell
 class PatchCB(Callback):
 
-    def __init__(self, patch_len, stride ):
+    def __init__(self, patch_len, stride, padding_patch=None):
         """
         Callback used to perform patching on the batch input data
         Args:
@@ -16,6 +16,7 @@ class PatchCB(Callback):
         """
         self.patch_len = patch_len
         self.stride = stride
+        self.padding_patch = padding_patch
 
     def before_forward(self): self.set_patch()
        
@@ -23,14 +24,14 @@ class PatchCB(Callback):
         """
         take xb from learner and convert to patch: [bs x seq_len x n_vars] -> [bs x num_patch x n_vars x patch_len]
         """
-        xb_patch, num_patch = create_patch(self.xb, self.patch_len, self.stride)    # xb: [bs x seq_len x n_vars]
+        xb_patch, num_patch = create_patch(self.xb, self.patch_len, self.stride, self.padding_patch)    # xb: [bs x seq_len x n_vars]
         # learner get the transformed input
         self.learner.xb = xb_patch                              # xb_patch: [bs x num_patch x n_vars x patch_len]           
 
 
 class PatchMaskCB(Callback):
     def __init__(self, patch_len, stride, mask_ratio, use_gaussian_noise, noise_std,
-                        mask_when_pred:bool=False):
+                        mask_when_pred:bool=False, padding_patch=None):
         """
         Callback used to perform the pretext task of reconstruct the original data after a binary mask has been applied.
         Args:
@@ -43,6 +44,7 @@ class PatchMaskCB(Callback):
         self.mask_ratio = mask_ratio
         self.use_gaussian_noise = use_gaussian_noise
         self.noise_std = noise_std
+        self.padding_patch = padding_patch
 
     def before_fit(self):
         # overwrite the predefined loss function
@@ -55,7 +57,7 @@ class PatchMaskCB(Callback):
         """
         xb: [bs x seq_len x n_vars] -> [bs x num_patch x n_vars x patch_len]
         """
-        xb_patch, num_patch = create_patch(self.xb, self.patch_len, self.stride)    # xb_patch: [bs x num_patch x n_vars x patch_len]
+        xb_patch, num_patch = create_patch(self.xb, self.patch_len, self.stride, self.padding_patch)    # xb_patch: [bs x num_patch x n_vars x patch_len]
         xb_mask, _, self.mask, _ = random_masking(xb_patch, self.mask_ratio, use_gaussian_noise=self.use_gaussian_noise, noise_std=self.noise_std)   # xb_mask: [bs x num_patch x n_vars x patch_len]
         self.mask = self.mask.bool()    # mask: [bs x num_patch x n_vars]
         self.learner.xb = xb_mask       # learner.xb: masked 4D tensor    
@@ -72,11 +74,23 @@ class PatchMaskCB(Callback):
         return loss
 
 
-def create_patch(xb, patch_len, stride):
+def create_patch(xb, patch_len, stride, padding_patch=None):
     """
     xb: [bs x seq_len x n_vars]
     """
     seq_len = xb.shape[1]
+
+    # Apply padding if needed
+    if padding_patch == 'end':
+        # Pad at the end: replicate last value 'stride' times
+        # xb shape: [bs, seq_len, n_vars] → need to pad dimension 1
+        pad_layer = nn.ReplicationPad1d((0, stride))
+        # Transpose to [bs, n_vars, seq_len] for padding
+        xb = xb.transpose(1, 2)  # [bs, n_vars, seq_len]
+        xb = pad_layer(xb)       # [bs, n_vars, seq_len+stride]
+        xb = xb.transpose(1, 2)  # [bs, seq_len+stride, n_vars]
+        seq_len = xb.shape[1]
+
     num_patch = (max(seq_len, patch_len)-patch_len) // stride + 1
     tgt_len = patch_len  + stride*(num_patch-1)
     s_begin = seq_len - tgt_len

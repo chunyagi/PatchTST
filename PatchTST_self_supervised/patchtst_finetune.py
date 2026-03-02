@@ -34,6 +34,7 @@ parser.add_argument('--percent', type=int, default=100, help='percentage of trai
 # Patch
 parser.add_argument('--patch_len', type=int, default=12, help='patch length')
 parser.add_argument('--stride', type=int, default=12, help='stride between patch')
+parser.add_argument('--padding_patch', type=str, default=None, help='padding patch: end or None')
 # RevIN
 parser.add_argument('--revin', type=int, default=1, help='reversible instance normalization')
 parser.add_argument('--affine', type=int, default=0, help='RevIN-affine; True 1 False 0')
@@ -85,6 +86,9 @@ def get_model(c_in, args, head_type, weight_path=None):
     """
     # get number of patches
     num_patch = (max(args.context_points, args.patch_len)-args.patch_len) // args.stride + 1    
+    if args.padding_patch == 'end':
+        num_patch += 1  # Add one more patch when padding
+
     print('number of patches:', num_patch)
     
     # get model
@@ -124,7 +128,7 @@ def find_lr(head_type):
     loss_func = torch.nn.MSELoss(reduction='mean')
     # get callbacks
     cbs = [RevInCB(dls.vars, affine=args.affine)] if args.revin else []
-    cbs += [PatchCB(patch_len=args.patch_len, stride=args.stride)]
+    cbs += [PatchCB(patch_len=args.patch_len, stride=args.stride, padding_patch=args.padding_patch)]
         
     # define learner
     learn = Learner(dls, model, 
@@ -159,7 +163,7 @@ def finetune_func(lr=args.lr):
     # get callbacks
     cbs = [RevInCB(dls.vars, affine=args.affine, denorm=True)] if args.revin else []
     cbs += [
-         PatchCB(patch_len=args.patch_len, stride=args.stride),
+         PatchCB(patch_len=args.patch_len, stride=args.stride, padding_patch=args.padding_patch),
          SaveModelCB(monitor='valid_loss', fname=args.save_finetuned_model, path=args.save_path)
         ]
     # define learner
@@ -189,7 +193,7 @@ def linear_probe_func(lr=args.lr):
     # get callbacks
     cbs = [RevInCB(dls.vars, affine=args.affine, denorm=True)] if args.revin else []
     cbs += [
-         PatchCB(patch_len=args.patch_len, stride=args.stride),
+         PatchCB(patch_len=args.patch_len, stride=args.stride, padding_patch=args.padding_patch),
          SaveModelCB(monitor='valid_loss', fname=args.save_finetuned_model, path=args.save_path)
         ]
     # define learner
@@ -210,7 +214,7 @@ def test_func(weight_path):
     model = get_model(dls.vars, args, head_type='prediction').to('cuda')
     # get callbacks
     cbs = [RevInCB(dls.vars, denorm=True)] if args.revin else []
-    cbs += [PatchCB(patch_len=args.patch_len, stride=args.stride)]
+    cbs += [PatchCB(patch_len=args.patch_len, stride=args.stride, padding_patch=args.padding_patch)]
     learn = Learner(dls, model, cbs=cbs)
     out  = learn.test(dls.test, suffix_name, weight_path=weight_path+'.pth', scores=[mse,mae], store_attn=args.output_attention)         # out: a list of [pred, targ, score]
     print('score:', out[2])

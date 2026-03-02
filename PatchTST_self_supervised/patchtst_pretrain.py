@@ -31,6 +31,7 @@ parser.add_argument('--percent', type=int, default=100, help='percentage of trai
 # Patch
 parser.add_argument('--patch_len', type=int, default=12, help='patch length')
 parser.add_argument('--stride', type=int, default=12, help='stride between patch')
+parser.add_argument('--padding_patch', type=str, default=None, help='padding patch: end or None')
 # RevIN
 parser.add_argument('--revin', type=int, default=1, help='reversible instance normalization')
 # Model args
@@ -88,6 +89,9 @@ def get_model(c_in, args):
     """
     # get number of patches
     num_patch = (max(args.context_points, args.patch_len)-args.patch_len) // args.stride + 1    
+    if args.padding_patch == 'end':
+        num_patch += 1  # Add one more patch when padding
+
     print('number of patches:', num_patch)
     
     # get model
@@ -120,7 +124,7 @@ def find_lr():
     loss_func = torch.nn.MSELoss(reduction='mean')
     # get callbacks
     cbs = [RevInCB(dls.vars, denorm=False)] if args.revin else []
-    cbs += [PatchMaskCB(patch_len=args.patch_len, stride=args.stride, mask_ratio=args.mask_ratio, use_gaussian_noise=args.use_gaussian_noise, noise_std=args.noise_std)]
+    cbs += [PatchMaskCB(patch_len=args.patch_len, stride=args.stride, mask_ratio=args.mask_ratio, use_gaussian_noise=args.use_gaussian_noise, noise_std=args.noise_std, padding_patch=args.padding_patch)]
         
     # define learner
     learn = Learner(dls, model, 
@@ -144,7 +148,7 @@ def pretrain_func(lr=args.lr):
     # get callbacks
     cbs = [RevInCB(dls.vars, denorm=False)] if args.revin else []
     cbs += [
-         PatchMaskCB(patch_len=args.patch_len, stride=args.stride, mask_ratio=args.mask_ratio, use_gaussian_noise=args.use_gaussian_noise, noise_std=args.noise_std),
+         PatchMaskCB(patch_len=args.patch_len, stride=args.stride, mask_ratio=args.mask_ratio, use_gaussian_noise=args.use_gaussian_noise, noise_std=args.noise_std, padding_patch=args.padding_patch),
          SaveModelCB(monitor='valid_loss', fname=args.save_pretrained_model,                       
                         path=args.save_path),
          EarlyStoppingCB(monitor='valid_loss', patient=args.patient)
@@ -172,5 +176,3 @@ if __name__ == '__main__':
     # Pretrain
     pretrain_func(suggested_lr)
     print('pretraining completed')
-    
-
