@@ -77,7 +77,7 @@ if args.is_finetune: args.save_finetuned_model = args.dset_finetune+'_patchtst_f
 elif args.is_linear_probe: args.save_finetuned_model = args.dset_finetune+'_patchtst_linear-probe'+suffix_name
 else: args.save_finetuned_model = args.dset_finetune+'_patchtst_finetuned'+suffix_name
 
-# get available GPU devide
+# get available GPU device
 set_device()
 
 def get_model(c_in, args, head_type, weight_path=None):

@@ -26,6 +26,8 @@ Callback lists:
 """
 
 from ..basics import *
+import os
+import numpy as np
 import torch
 
 DTYPE = torch.float32
@@ -78,16 +80,14 @@ class GetTestCB(Callback):
         self.first_batch_saved = False
 
     def before_test(self):
-        self.preds, self.targets = [], []
+        self.preds, self.targets, self.contexts = [], [], []  # Add contexts
     
     def after_batch_test(self):        
         self.preds.append(self.pred)
         self.targets.append(self.yb)
+        self.contexts.append(self.xb)
         
-        if self.store_attn and not self.first_batch_saved and hasattr(self.learner, 'attn'):
-            import os
-            import numpy as np
-            
+        if self.store_attn and not self.first_batch_saved and hasattr(self.learner, 'attn'):            
             var_idx_mapping = {
                 0: 11, 1: 25, 2: 81, 3: 4, 4: 24, 5: 27, 
                 6: 152, 7: 154, 8: 237, 9: 238, 10: 206, 
@@ -116,6 +116,17 @@ class GetTestCB(Callback):
             self.first_batch_saved = True
             print(f"Saved case study data to {folder_path}")
     
-    def after_test(self):           
+    def after_test(self):
         self.preds = torch.concat(self.preds)
         self.targets = torch.concat(self.targets)
+        self.contexts = torch.concat(self.contexts)
+        
+        # Save all predictions and targets
+        folder_path = './test_results/' + self.setting + '/'
+        os.makedirs(folder_path, exist_ok=True)
+        
+        np.save(folder_path + 'all_predictions.npy', self.preds.cpu().numpy())
+        np.save(folder_path + 'all_targets.npy', self.targets.cpu().numpy())
+        np.save(folder_path + 'all_contexts.npy', self.contexts.cpu().numpy())        
+        
+        print(f"Saved all predictions to {folder_path}")
