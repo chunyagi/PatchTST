@@ -1,3 +1,27 @@
+# Master's Thesis — Experiment Code
+
+The experiment notebooks can be found in the `notebooks/` directory.
+
+## Main Results
+- `patchtst_masking_strategy_comparison_full_etth1.ipynb`: Main forecasting results on ETTh1
+- `patchtst_masking_strategy_comparison_full_weather.ipynb`: Main forecasting results on Weather
+- `patchtst_masking_strategy_comparison.ipynb`: Preliminary experiments comparing zero masking and noise masking on ETTh1
+
+## Case Studies
+- `case_study_attention_analysis.ipynb`: Case study on attention analysis
+- `case_study_frequency_analysis.ipynb`: Case study on forecasting results across different forecast horizons
+- `case_study_mask_ratio.ipynb`: Case study on forecasting results across different masking ratios used in pretraining
+
+## Baseline Models & EDA
+- `baseline_arma.ipynb`: ARMA baseline implementation
+- `baseline_lstm.ipynb`: LSTM baseline implementation
+- `elec_eda.ipynb`: Exploratory data analysis on Electricity
+
+## Attention Visualisation Tool
+The interactive attention visualisation tool is available at: https://github.com/chunyagi/timeseries-attention-visualizer
+
+
+
 # PatchTST (ICLR 2023)
 
 ### This is an offical implementation of PatchTST: [A Time Series is Worth 64 Words: Long-term Forecasting with Transformers](https://arxiv.org/abs/2211.14730). 
